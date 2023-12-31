@@ -17,7 +17,13 @@ def get_cell_label(state: np.ndarray, x: int, y: int) -> PlayerLabel:
     return num_to_player[get_cell(state, x, y)] 
 
 
+def is_empty_cell(state: np.ndarray, x: int, y: int) -> bool:
+    return get_cell(state, x, y) == 0
+
+
 def set_cell(state: np.ndarray, x: int, y: int, num: PlayerId) -> np.ndarray:
+    if not is_empty_cell(state, x, y):
+        raise ValueError(f'Trying to set a value of {num} to a non empty cell at ({x}, {y}).')
     out: np.ndarray = state.copy()
     out[x, y] = num
     return out 
@@ -116,22 +122,28 @@ def get_heuristic_of_0depth(state: np.ndarray) -> int:
     diagT_indices: np.ndarray = np.array([(i, state_size - i - 1) for i in range(state_size)])
     sum_inv_diag: int = np.sum(state[diagT_indices[:, 0], diagT_indices[:, 1]])
     # If we run out of depth to explore the game tree,
-    # then sum up how each of the different ways to win
-    # (we're negating it so that the computer is incentivized towards
-    # going for states where it'll win).
-    # return -(np.sum(sum_rows) + np.sum(sum_cols) + sum_diag + sum_inv_diag)
+    # then sum up each row and column and diagonal that
+    # the computer is more likely to win.
     return (state_size // 2) * ((np.sum(sum_rows < 0) - 1) + (np.sum(sum_cols < 0) - 1) + (1 if sum_diag < 0 else -1) + (1 if sum_inv_diag < 0 else -1))
 
 
+def get_infinity(state: np.ndarray) -> int:
+    '''
+    Get a reasonably large enough value for infinity. It's based off of the state_size.
+    '''
+    return 2 * ((4 * get_state_size(state) + 1) ** 3)
+
 
 def alpha_beta(state: np.ndarray, x: int, y: int, depth: int, alpha: float, beta: float, maximizing_player: bool) -> tp.Tuple[int, int, int]:
-    if depth == 0 or is_done(state):
-        if is_done(state):
-            return get_heuristic_of_done_game(state), x, y
-        else:
-            return get_heuristic_of_0depth(state), x, y
+    if is_done(state):
+        return get_heuristic_of_done_game(state), x, y
+    elif depth == 0:
+        return get_heuristic_of_0depth(state), x, y
+
+    infinity: int = get_infinity(state)
+
     if maximizing_player:
-        value: int = -10_000
+        value: int = -infinity
         best_x: int = x
         best_y: int = y
         for move_x, move_y in get_possible_moves(state):
@@ -144,7 +156,7 @@ def alpha_beta(state: np.ndarray, x: int, y: int, depth: int, alpha: float, beta
                 break
         return value, best_x, best_y 
     else:
-        value: int = 10_000
+        value: int = infinity
         best_x: int = x
         best_y: int = y
         for move_x, move_y in get_possible_moves(state):
@@ -156,14 +168,20 @@ def alpha_beta(state: np.ndarray, x: int, y: int, depth: int, alpha: float, beta
             if value <= alpha:
                 break
         return value, best_x, best_y
-    
+
 
 def do_smart_ai(state: np.ndarray) -> tp.Tuple[int, int]:
-    # if we're at the beginning of the game, might as well just pick a random 
-    # cell first and then go from there.
-    _, out_x, out_y = alpha_beta(state, 0, 0, get_state_size(state), -10_000, 10_000, False)
+    infinity: int = get_infinity(state)
+    _, out_x, out_y = alpha_beta(state, 0, 0, get_state_size(state), -infinity, infinity, False)
     assert is_valid_input(state, out_x, out_y), 'AI suggested a move that is an invalid input'
     return out_x, out_y
+
+
+def do_dumb_smart_ai(state: np.ndarray) -> tp.Tuple[int, int]:
+    if np.random.random() < 0.5:
+        return get_random_xy(state)
+    else:
+        return do_smart_ai(state)
 
 
 def get_difficulty_from_user() -> int:
@@ -173,7 +191,7 @@ def get_difficulty_from_user() -> int:
     return int(input('Choose the difficulty by its number> '))
 
 
-difficulty_settings: tp.Dict[int, tp.Tuple[int, AiMoveChoiceFunc, str]] = {0: (3, get_random_xy, 'easy'), 1: (3, do_smart_ai, 'medium'), 2: (5, do_smart_ai, 'hard'), 50: (100, get_random_xy, 'Near Impossible'), 100: (100, do_smart_ai, 'impossible')}
+difficulty_settings: tp.Dict[int, tp.Tuple[int, AiMoveChoiceFunc, str]] = {0: (3, get_random_xy, 'easy'), 1: (3, do_dumb_smart_ai, 'less easy'), 2: (3, do_smart_ai, 'medium'), 3: (5, do_smart_ai, 'hard'), 50: (100, get_random_xy, 'near impossible'), 75: (100, do_dumb_smart_ai, 'almost impossible'), 100: (100, do_smart_ai, 'impossible')}
 
 
 def do_game_loop(difficulty: int) -> int:
@@ -202,7 +220,6 @@ def do_game_loop(difficulty: int) -> int:
             board_state = set_cell(board_state, x, y, 1)
             is_players_turn = False
         else:
-            # x, y = get_random_xy(board_state)
             x, y = get_ai_move_func_from_difficulty(difficulty)(board_state)
             board_state = set_cell(board_state, x, y, -1)
             is_players_turn = True 
@@ -215,15 +232,16 @@ def do_game_loop(difficulty: int) -> int:
 
     if winner is None or winner == 0:
         print('It\'s a tie!')
+        return 0
     elif winner < 0:
         print('Computer won!')
     else:
         print('Player won!')
 
+    return winner
+
 
 if __name__ == '__main__':
-
     difficulty: int = get_difficulty_from_user()
     do_game_loop(difficulty)
-
 
