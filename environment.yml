@@ -1,0 +1,11 @@
+name: TicTacToe
+channels:
+  - defaults
+dependencies:
+  - matplotlib
+  - numpy
+  - pandas
+  - plotly
+  - python[version='<3.11']
+  - scikit-learn
+  - seaborn
